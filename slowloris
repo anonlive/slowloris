@@ -69,39 +69,47 @@ while (n--) {
 
 req += '\r\n';
 
-// run
-
-while (c--) send();
-
 // active connections
 
 var active = 0;
 
-function send() {
+// run
+
+while (c--) send(c);
+
+function send(connectionNumber) {
+  var bucket = connectionNumber % configs.length;
   var secure = 'https:' == url.protocol;
 
-  var opts = {};
-  opts.port = url.port || (secure ? 443 : 80);
-  opts.host = url.hostname;
+  var opts = {
+    host: url.hostname,
+    port: url.port || (secure ? 443 : 80),
+    method: 'POST',
+    path: url.path,
+    agent: secure ? httpsAgents[bucket] : httpAgents[bucket]
+  };
 
-  var mod = secure ? tls : net;
+  var mod = secure ? https : http;
 
-  var sock = mod.connect(opts, function(){
-    ++active;
-    process.stdout.write('\r  active: ' + active + ' ');
-    var i = 0;
+  ++active;
+  process.stdout.write('Connecting. Number of active processes - ' + active + '\n');
 
-    sock.write('GET / HTTP/1.1\r\n');
+  var sock = mod.request(opts);
 
-    setInterval(function(){
-      if (null == req[i]) return;
-      sock.write(req[i++]);
-    }, 50);
+  sock.on('close', function(){
+    --active;
+    process.stdout.write('Closed out! Number of active processes - ' + active + '\n');
   });
-
-  sock.setTimeout(0);
 
   sock.on('error', function(){
     --active;
+    process.stdout.write('Errored out! Number of active processes - ' + active + '\n');
   });
+
+  var i = 0;
+
+  setInterval(function(){
+    if (null == req[i]) { sock.end(); return; }
+    sock.write(req[i++]);
+  }, 50);
 }
